@@ -70,7 +70,7 @@ router.put("/status/:id", async (req, res) => {
     }
 
     const booking = result.rows[0];
-
+console.log(booking)
     // Send mail to customer
     const transporter = nodemailer.createTransport({
       service: "gmail",
