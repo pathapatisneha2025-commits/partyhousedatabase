@@ -1,20 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
-const nodemailer = require("nodemailer");
-require("dotenv").config();
-
-// ✅ BREVO SMTP TRANSPORTER
-const transporter = nodemailer.createTransport({
-  host: process.env.BREVO_SMTP_HOST,
-  port: process.env.BREVO_SMTP_PORT,
-  secure: false,
-  auth: {
-    user: process.env.BREVO_SMTP_USER,
-    pass: process.env.BREVO_SMTP_KEY,
-  },
-});
-
+const nodemailer = require("nodemailer");  // ✅ ADD THIS
+require("dotenv").config();                // ✅ REQUIRED for .env
+const { Resend } = require("resend");
+const resend = new Resend(process.env.RESEND_API_KEY);
 // CREATE NEW BOOKING
 router.post("/add", async (req, res) => {
   try {
@@ -42,7 +32,9 @@ router.post("/add", async (req, res) => {
 // ADMIN: GET ALL BOOKINGS
 router.get("/all", async (req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM bookings`);
+    const result = await pool.query(
+      `SELECT * FROM bookings`
+    );
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -63,7 +55,8 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// ADMIN: UPDATE BOOKING STATUS AND SEND EMAIL
+// ADMIN: UPDATE BOOKING STATUS ONLY
+
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -80,27 +73,28 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // 📩 Send email via Brevo
-    await transporter.sendMail({
-      from: `"Party House" <${process.env.BREVO_SMTP_USER}>`,
+    const email = await resend.emails.send({
+      from: "PartyHouse <onboarding@resend.dev>",
       to: booking.email,
       subject: `Your Booking is ${status}`,
       html: `
         <h2>Hello ${booking.name},</h2>
         <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
-        <p>Thank you for choosing Party House!</p>
       `,
     });
 
+    console.log("Email sent:", email);
     res.json({ message: "Status updated & email sent", booking });
 
   } catch (error) {
-    console.error("Email error:", error);
-    res.status(500).json({ error: "Server error while sending email" });
+    console.error("Resend error:", error);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// UPDATE FULL BOOKING
+
+
+// ✅ ADMIN: UPDATE FULL BOOKING DETAILS
 router.put("/update/:id", async (req, res) => {
   try {
     const { name, email, phone, date, guests, message } = req.body;
@@ -120,11 +114,16 @@ router.put("/update/:id", async (req, res) => {
   }
 });
 
-// DELETE BOOKING
+// ✅ ADMIN: DELETE BOOKING
 router.delete("/delete/:id", async (req, res) => {
   try {
-    await pool.query(`DELETE FROM bookings WHERE id = $1`, [req.params.id]);
+    await pool.query(
+      `DELETE FROM bookings WHERE id = $1`,
+      [req.params.id]
+    );
+
     res.json({ message: "Booking deleted successfully" });
+
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
