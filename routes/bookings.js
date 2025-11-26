@@ -55,6 +55,8 @@ router.get("/:id", async (req, res) => {
 });
 
 // ADMIN: UPDATE BOOKING STATUS ONLY
+const nodemailer = require("nodemailer");
+
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -70,18 +72,21 @@ router.put("/status/:id", async (req, res) => {
     }
 
     const booking = result.rows[0];
-console.log(booking)
-    // Send mail to customer
+    console.log(booking);
+
+    // Create SendGrid transporter
     const transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.sendgrid.net",
+      port: 587,
       auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_PASS,
+        user: "apikey", // literal string "apikey"
+        pass: process.env.SENDGRID_API_KEY,
       },
     });
 
+    // Send email to customer
     await transporter.sendMail({
-      from: process.env.GMAIL_USER,
+      from: process.env.EMAIL_FROM, // your verified SendGrid email
       to: booking.email,
       subject: "Your Booking is Confirmed ✔",
       html: `
