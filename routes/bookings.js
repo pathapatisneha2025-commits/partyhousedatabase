@@ -32,7 +32,7 @@ router.post("/add", async (req, res) => {
 router.get("/all", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT * FROM bookings ORDER BY created_at DESC`
+      `SELECT * FROM bookings`
     );
     res.json(result.rows);
   } catch (err) {
