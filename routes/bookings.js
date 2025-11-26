@@ -3,7 +3,8 @@ const router = express.Router();
 const pool = require("../db");
 const nodemailer = require("nodemailer");  // ✅ ADD THIS
 require("dotenv").config();                // ✅ REQUIRED for .env
-
+const sgMail = require("@sendgrid/mail");
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 // CREATE NEW BOOKING
 router.post("/add", async (req, res) => {
   try {
@@ -71,33 +72,23 @@ router.put("/status/:id", async (req, res) => {
     }
 
     const booking = result.rows[0];
-    console.log(booking);
 
-    // Create SendGrid transporter
-    const transporter = nodemailer.createTransport({
-      host: "smtp.sendgrid.net",
-      port: 587,
-      auth: {
-        user: "apikey", // literal string "apikey"
-        pass: process.env.SENDGRID_API_KEY,
-      },
-    });
-
-    // Send email to customer
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM, // your verified SendGrid email
+    const msg = {
       to: booking.email,
+      from: process.env.EMAIL_FROM, // verified SendGrid sender
       subject: "Your Booking is Confirmed ✔",
       html: `
         <h2>Hello ${booking.name},</h2>
         <p>Your booking for <strong>${booking.event_date}</strong> is now <b>CONFIRMED</b>.</p>
         <p>We look forward to hosting your event! 🎉</p>
       `,
-    });
+    };
+
+    await sgMail.send(msg);
 
     res.json({ message: "Status updated & email sent", booking });
   } catch (error) {
-    console.error(error);
+    console.error("SendGrid error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
