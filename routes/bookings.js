@@ -53,21 +53,49 @@ router.get("/:id", async (req, res) => {
 });
 
 // ADMIN: UPDATE BOOKING STATUS ONLY
-router.put("/:id/status", async (req, res) => {
-  try {
-    const { status } = req.body;
+router.put("/status/:id", async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
 
-    await pool.query(
-      `UPDATE bookings SET status = $1 WHERE id = $2`,
-      [status, req.params.id]
+  try {
+    const result = await pool.query(
+      "UPDATE bookings SET status=$1 WHERE id=$2 RETURNING *",
+      [status, id]
     );
 
-    res.json({ message: "Status updated successfully" });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
 
-  } catch (err) {
+    const booking = result.rows[0];
+
+    // 👉 Send mail to customer
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "yourgmail@gmail.com",
+        pass: "your-app-password",
+      },
+    });
+
+    await transporter.sendMail({
+      from: "yourgmail@gmail.com",
+      to: booking.email,
+      subject: "Your Booking is Confirmed ✔",
+      html: `
+        <h2>Hello ${booking.name},</h2>
+        <p>Your booking for <strong>${booking.event_date}</strong> is now <b>CONFIRMED</b>.</p>
+        <p>We look forward to hosting your event! 🎉</p>
+      `,
+    });
+
+    res.json({ message: "Status updated & email sent", booking });
+  } catch (error) {
+    console.log(error);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 // ✅ ADMIN: UPDATE FULL BOOKING DETAILS
 router.put("/update/:id", async (req, res) => {
