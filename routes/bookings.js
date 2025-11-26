@@ -3,8 +3,8 @@ const router = express.Router();
 const pool = require("../db");
 const nodemailer = require("nodemailer");  // ✅ ADD THIS
 require("dotenv").config();                // ✅ REQUIRED for .env
-const sgMail = require("@sendgrid/mail");
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const { Resend } = require("resend");
+const resend = new Resend(process.env.RESEND_API_KEY);
 // CREATE NEW BOOKING
 router.post("/add", async (req, res) => {
   try {
@@ -62,7 +62,6 @@ router.put("/status/:id", async (req, res) => {
   const { status } = req.body;
 
   try {
-    // Update booking status
     const result = await pool.query(
       "UPDATE bookings SET status=$1 WHERE id=$2 RETURNING *",
       [status, id]
@@ -73,35 +72,25 @@ router.put("/status/:id", async (req, res) => {
     }
 
     const booking = result.rows[0];
-    console.log("Booking updated:", booking);
 
-    // Prepare email message
-    const msg = {
+    const email = await resend.emails.send({
+      from: "PartyHouse <onboarding@resend.dev>",
       to: booking.email,
-      from: process.env.EMAIL_FROM, // must be verified in SendGrid
-      subject: `Your Booking is ${status} ✔`,
+      subject: `Your Booking is ${status}`,
       html: `
         <h2>Hello ${booking.name},</h2>
-        <p>Your booking for <strong>${booking.event_date.toDateString()}</strong> is now <b>${status}</b>.</p>
-        <p>We look forward to hosting your event! 🎉</p>
+        <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
       `,
-    };
+    });
 
-    // Send email using SendGrid API
-    await sgMail.send(msg);
-
+    console.log("Email sent:", email);
     res.json({ message: "Status updated & email sent", booking });
+
   } catch (error) {
-    // Detailed error logging
-    if (error.response) {
-      console.error("SendGrid response error:", error.response.body);
-    } else {
-      console.error("SendGrid error:", error);
-    }
-    res.status(500).json({ error: "Server error while sending email" });
+    console.error("Resend error:", error);
+    res.status(500).json({ error: "Server error" });
   }
 });
-
 
 
 
