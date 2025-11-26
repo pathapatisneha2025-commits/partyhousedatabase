@@ -69,17 +69,17 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // 👉 Send mail to customer
+    // Send mail to customer
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: "yourgmail@gmail.com",
-        pass: "your-app-password",
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_PASS,
       },
     });
 
     await transporter.sendMail({
-      from: "yourgmail@gmail.com",
+      from: process.env.GMAIL_USER,
       to: booking.email,
       subject: "Your Booking is Confirmed ✔",
       html: `
@@ -91,10 +91,11 @@ router.put("/status/:id", async (req, res) => {
 
     res.json({ message: "Status updated & email sent", booking });
   } catch (error) {
-    console.log(error);
+    console.error(error);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 // ✅ ADMIN: UPDATE FULL BOOKING DETAILS
