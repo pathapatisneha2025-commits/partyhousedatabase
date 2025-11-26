@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
+const nodemailer = require("nodemailer");  // ✅ ADD THIS
+require("dotenv").config();                // ✅ REQUIRED for .env
 
 // CREATE NEW BOOKING
 router.post("/add", async (req, res) => {
