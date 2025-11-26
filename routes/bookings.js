@@ -62,6 +62,7 @@ router.put("/status/:id", async (req, res) => {
   const { status } = req.body;
 
   try {
+    // Update booking status
     const result = await pool.query(
       "UPDATE bookings SET status=$1 WHERE id=$2 RETURNING *",
       [status, id]
@@ -72,26 +73,35 @@ router.put("/status/:id", async (req, res) => {
     }
 
     const booking = result.rows[0];
+    console.log("Booking updated:", booking);
 
+    // Prepare email message
     const msg = {
       to: booking.email,
-      from: process.env.EMAIL_FROM, // verified SendGrid sender
-      subject: "Your Booking is Confirmed ✔",
+      from: process.env.EMAIL_FROM, // must be verified in SendGrid
+      subject: `Your Booking is ${status} ✔`,
       html: `
         <h2>Hello ${booking.name},</h2>
-        <p>Your booking for <strong>${booking.event_date}</strong> is now <b>CONFIRMED</b>.</p>
+        <p>Your booking for <strong>${booking.event_date.toDateString()}</strong> is now <b>${status}</b>.</p>
         <p>We look forward to hosting your event! 🎉</p>
       `,
     };
 
+    // Send email using SendGrid API
     await sgMail.send(msg);
 
     res.json({ message: "Status updated & email sent", booking });
   } catch (error) {
-    console.error("SendGrid error:", error);
-    res.status(500).json({ error: "Server error" });
+    // Detailed error logging
+    if (error.response) {
+      console.error("SendGrid response error:", error.response.body);
+    } else {
+      console.error("SendGrid error:", error);
+    }
+    res.status(500).json({ error: "Server error while sending email" });
   }
 });
+
 
 
 
