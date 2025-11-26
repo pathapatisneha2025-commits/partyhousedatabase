@@ -55,7 +55,6 @@ router.get("/:id", async (req, res) => {
 });
 
 // ADMIN: UPDATE BOOKING STATUS ONLY
-const nodemailer = require("nodemailer");
 
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
