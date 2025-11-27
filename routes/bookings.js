@@ -72,18 +72,17 @@ router.put("/status/:id", async (req, res) => {
 
     const emailFrom = process.env.EMAIL_FROM;
 
-    const email = await resend.emails.send({
-      from: `PartyHouse <${emailFrom}>`,
-      to: booking.email,
-      subject: `Your Booking is ${status}`,
-      html: `
-        <h2>Hello ${booking.name},</h2>
-        <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
-        <p>Service: <b>${booking.services || "Not specified"}</b></p>
-      `,
-    });
+   const email = await resend.emails.send({
+  from: "PartyHouse <sandbox@resend.dev>",
+  to: booking.email,  // recipient
+  subject: `Your Booking is ${status}`,
+  html: `
+    <h2>Hello ${booking.name}</h2>
+    <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
+  `,
+});
 
-    console.log("Email sent:", email);
+
     res.json({ message: "Status updated & email sent", booking });
 
   } catch (error) {
