@@ -80,7 +80,7 @@ router.put("/status/:id", async (req, res) => {
 
     // --- Send email via Brevo ---
     const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
-      sender: { email: process.env.BREVO_EMAIL_FROM, name: "PartyHouse" },
+      sender: { email: process.env.BREVO_EMAIL_FROM, name: "partyhouse" },
       to: [{ email: booking.email, name: booking.name }],
       subject: `Your Booking is ${status}`,
       htmlContent: `
