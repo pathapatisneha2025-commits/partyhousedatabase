@@ -3,15 +3,20 @@ const router = express.Router();
 const pool = require("../db");
 const multer = require("multer");
 const path = require("path");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("../cloudinary");
 
-// ---------- Multer Setup ----------
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/"); // folder where images will be saved
+// ---------- Cloudinary Storage Setup ----------
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "rooms", // folder in Cloudinary
+    allowed_formats: ["jpg", "png", "jpeg", "webp"],
+    public_id: (req, file) => {
+      const nameWithoutExt = path.parse(file.originalname).name;
+      return Date.now() + "-" + nameWithoutExt;
+    },
   },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); 
-  }
 });
 
 const upload = multer({ storage });
@@ -25,7 +30,8 @@ router.post("/add", upload.single("image_url"), async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const image_url = req.file ? `/uploads/${req.file.filename}` : ""; 
+    // Cloudinary automatically provides secure_url
+    const image_url = req.file ? req.file.path : ""; 
 
     const result = await pool.query(
       `INSERT INTO rooms (name, capacity, price, description, image_url)
@@ -45,7 +51,7 @@ router.post("/add", upload.single("image_url"), async (req, res) => {
 router.put("/update/:id", upload.single("image_file"), async (req, res) => {
   try {
     const { name, capacity, price, description } = req.body;
-    const image_url = req.file ? `/uploads/${req.file.filename}` : req.body.image_url;
+    const image_url = req.file ? req.file.path : req.body.image_url;
 
     const result = await pool.query(
       `UPDATE rooms 
