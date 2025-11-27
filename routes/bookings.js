@@ -1,15 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
-require("dotenv").config();
-
-const brevo = require("@getbrevo/brevo");
-const apiInstance = new brevo.TransactionalEmailsApi();
-apiInstance.setApiKey(
-  brevo.TransactionalEmailsApiApiKeys.apiKey,
-  process.env.BREVO_API_KEY
-);
-
+const nodemailer = require("nodemailer");  // ✅ ADD THIS
+require("dotenv").config();                // ✅ REQUIRED for .env
+const { Resend } = require("resend");
+const resend = new Resend(process.env.RESEND_API_KEY);
 // CREATE NEW BOOKING
 router.post("/add", async (req, res) => {
   try {
@@ -67,7 +62,6 @@ router.put("/status/:id", async (req, res) => {
   const { status } = req.body;
 
   try {
-    // Update status in database  
     const result = await pool.query(
       "UPDATE bookings SET status=$1 WHERE id=$2 RETURNING *",
       [status, id]
@@ -79,31 +73,24 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // Prepare Brevo email  
-    const sendSmtpEmail = {
-      sender: { name: "PartyHouse", email: process.env.BREVO_EMAIL_FROM },
-      to: [{ email: booking.email }],
-      subject: `Your Booking Status: ${status}`,
-      htmlContent: `
+    const email = await resend.emails.send({
+      from: "PartyHouse <onboarding@resend.dev>",
+      to: booking.email,
+      subject: `Your Booking is ${status}`,
+      html: `
         <h2>Hello ${booking.name},</h2>
-        <p>Your booking on <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
+        <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
       `,
-    };
-
-    // Send using Brevo API  
-    await apiInstance.sendTransacEmail(sendSmtpEmail);
-
-    res.json({
-      message: "Status updated & email sent successfully",
-      booking,
     });
 
+    console.log("Email sent:", email);
+    res.json({ message: "Status updated & email sent", booking });
+
   } catch (error) {
-    console.error("Brevo API error:", error);
-    res.status(500).json({ error: "Server error sending email" });
+    console.error("Resend error:", error);
+    res.status(500).json({ error: "Server error" });
   }
 });
-
 
 
 
