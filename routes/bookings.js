@@ -6,13 +6,6 @@ require("dotenv").config();                // ✅ REQUIRED for .env
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
 // CREATE NEW BOOKING
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS,
-  },
-});
 router.post("/add", async (req, res) => {
   try {
     const { name, email, phone, date, guests, message } = req.body;
@@ -80,9 +73,8 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // Gmail Send Email
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM,
+    const email = await resend.emails.send({
+      from: "PartyHouse <onboarding@resend.dev>",
       to: booking.email,
       subject: `Your Booking is ${status}`,
       html: `
@@ -91,17 +83,14 @@ router.put("/status/:id", async (req, res) => {
       `,
     });
 
-    res.json({
-      message: "Status updated & email sent via Gmail",
-      booking,
-    });
+    console.log("Email sent:", email);
+    res.json({ message: "Status updated & email sent", booking });
 
   } catch (error) {
-    console.error("Email Error:", error);
+    console.error("Resend error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
-
 
 
 
