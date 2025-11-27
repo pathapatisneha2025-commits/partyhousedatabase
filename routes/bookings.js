@@ -73,8 +73,11 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
+    // Load sender email from .env
+    const emailFrom = process.env.EMAIL_FROM;
+
     const email = await resend.emails.send({
-  from: "PartyHouse <pathapatisneha2025@gmail.com>", // your verified sender
+      from: `PartyHouse <${emailFrom}>`,  // Using your verified sender
       to: booking.email,
       subject: `Your Booking is ${status}`,
       html: `
@@ -87,10 +90,11 @@ router.put("/status/:id", async (req, res) => {
     res.json({ message: "Status updated & email sent", booking });
 
   } catch (error) {
-    console.error("Resend error:", error);
+    console.error("Resend error:", error.response?.data || error.message);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 
