@@ -74,7 +74,7 @@ router.put("/status/:id", async (req, res) => {
     const booking = result.rows[0];
 
     const email = await resend.emails.send({
-      from: "PartyHouse <onboarding@resend.dev>",
+  from: "PartyHouse <pathapatisneha2025@gmail.com>", // your verified sender
       to: booking.email,
       subject: `Your Booking is ${status}`,
       html: `
