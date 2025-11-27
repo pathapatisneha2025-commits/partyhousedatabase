@@ -1,15 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
-const nodemailer = require("nodemailer");  // ✅ ADD THIS
-require("dotenv").config();                // ✅ REQUIRED for .env
+require("dotenv").config();
 
-const SibApiV3Sdk = require("sib-api-v3-sdk");
-const defaultClient = SibApiV3Sdk.ApiClient.instance;
-const apiKey = defaultClient.authentications["api-key"];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-
-const tranEmailApi = new SibApiV3Sdk.TransactionalEmailsApi();
+const brevo = require("@getbrevo/brevo");
+const apiInstance = new brevo.TransactionalEmailsApi();
+apiInstance.setApiKey(
+  brevo.TransactionalEmailsApiApiKeys.apiKey,
+  process.env.BREVO_API_KEY
+);
 
 // CREATE NEW BOOKING
 router.post("/add", async (req, res) => {
@@ -62,11 +61,13 @@ router.get("/:id", async (req, res) => {
 });
 
 // ADMIN: UPDATE BOOKING STATUS ONLY
+
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
   try {
+    // Update status in database  
     const result = await pool.query(
       "UPDATE bookings SET status=$1 WHERE id=$2 RETURNING *",
       [status, id]
@@ -78,24 +79,28 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // --- Send email via Brevo ---
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
-      sender: { email: process.env.BREVO_EMAIL_FROM, name: "partyhouse" },
-      to: [{ email: booking.email, name: booking.name }],
-      subject: `Your Booking is ${status}`,
+    // Prepare Brevo email  
+    const sendSmtpEmail = {
+      sender: { name: "PartyHouse", email: process.env.BREVO_EMAIL_FROM },
+      to: [{ email: booking.email }],
+      subject: `Your Booking Status: ${status}`,
       htmlContent: `
         <h2>Hello ${booking.name},</h2>
-        <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
-        <p>Thank you for choosing PartyHouse!</p>
+        <p>Your booking on <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
       `,
+    };
+
+    // Send using Brevo API  
+    await apiInstance.sendTransacEmail(sendSmtpEmail);
+
+    res.json({
+      message: "Status updated & email sent successfully",
+      booking,
     });
 
-    await tranEmailApi.sendTransacEmail(sendSmtpEmail);
-
-    res.json({ message: "Status updated & email sent via Brevo", booking });
   } catch (error) {
-    console.error("Brevo error:", error);
-    res.status(500).json({ error: "Server error" });
+    console.error("Brevo API error:", error);
+    res.status(500).json({ error: "Server error sending email" });
   }
 });
 
