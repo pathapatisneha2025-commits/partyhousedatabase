@@ -1,15 +1,31 @@
 const express = require("express");
 const router = express.Router();
-const pool = require("../db"); // PostgreSQL pool
+const pool = require("../db");
+const multer = require("multer");
+const path = require("path");
 
-// ✅ ADD NEW ROOM
-router.post("/add", async (req, res) => {
+// ---------- Multer Setup ----------
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/"); // folder where images will be saved
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname)); 
+  }
+});
+
+const upload = multer({ storage });
+
+// ---------- ADD NEW ROOM ----------
+router.post("/add", upload.single("image_url"), async (req, res) => {
   try {
-    const { name, capacity, price, description, image_url } = req.body;
+    const { name, capacity, price, description } = req.body;
 
     if (!name || !capacity || !price) {
       return res.status(400).json({ error: "Missing required fields" });
     }
+
+    const image_url = req.file ? `/uploads/${req.file.filename}` : ""; 
 
     const result = await pool.query(
       `INSERT INTO rooms (name, capacity, price, description, image_url)
@@ -25,21 +41,11 @@ router.post("/add", async (req, res) => {
   }
 });
 
-// ✅ GET ALL ROOMS
-router.get("/all", async (req, res) => {
+// ---------- UPDATE ROOM ----------
+router.put("/update/:id", upload.single("image_file"), async (req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM rooms ORDER BY id DESC`);
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// ✅ UPDATE ROOM
-router.put("/update/:id", async (req, res) => {
-  try {
-    const { name, capacity, price, description, image_url } = req.body;
+    const { name, capacity, price, description } = req.body;
+    const image_url = req.file ? `/uploads/${req.file.filename}` : req.body.image_url;
 
     const result = await pool.query(
       `UPDATE rooms 
@@ -56,13 +62,22 @@ router.put("/update/:id", async (req, res) => {
   }
 });
 
-// ✅ DELETE ROOM
+// ---------- GET ALL ROOMS ----------
+router.get("/all", async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT * FROM rooms ORDER BY id DESC`);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ---------- DELETE ----------
 router.delete("/delete/:id", async (req, res) => {
   try {
     await pool.query(`DELETE FROM rooms WHERE id = $1`, [req.params.id]);
     res.json({ message: "Room deleted successfully" });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
