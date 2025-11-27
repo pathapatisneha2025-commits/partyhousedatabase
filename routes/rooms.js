@@ -2,24 +2,27 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const multer = require("multer");
-const path = require("path");
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const { Readable } = require("stream");
 const cloudinary = require("../cloudinary");
 
-// ---------- Cloudinary Storage Setup ----------
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: "rooms", // folder in Cloudinary
-    allowed_formats: ["jpg", "png", "jpeg", "webp"],
-    public_id: (req, file) => {
-      const nameWithoutExt = path.parse(file.originalname).name;
-      return Date.now() + "-" + nameWithoutExt;
-    },
-  },
-});
-
+// Multer memory storage
+const storage = multer.memoryStorage();
 const upload = multer({ storage });
+
+// Helper to upload buffer to Cloudinary
+const uploadToCloudinary = (buffer, folder = "rooms") => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder },
+      (error, result) => (result ? resolve(result) : reject(error))
+    );
+    const readable = new Readable();
+    readable._read = () => {};
+    readable.push(buffer);
+    readable.push(null);
+    readable.pipe(stream);
+  });
+};
 
 // ---------- ADD NEW ROOM ----------
 router.post("/add", upload.single("image_url"), async (req, res) => {
@@ -30,8 +33,11 @@ router.post("/add", upload.single("image_url"), async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // Cloudinary automatically provides secure_url
-    const image_url = req.file ? req.file.path : ""; 
+    let image_url = "";
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer);
+      image_url = result.secure_url;
+    }
 
     const result = await pool.query(
       `INSERT INTO rooms (name, capacity, price, description, image_url)
@@ -51,12 +57,17 @@ router.post("/add", upload.single("image_url"), async (req, res) => {
 router.put("/update/:id", upload.single("image_file"), async (req, res) => {
   try {
     const { name, capacity, price, description } = req.body;
-    const image_url = req.file ? req.file.path : req.body.image_url;
+
+    let image_url = req.body.image_url; // keep old image if not uploading
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer);
+      image_url = result.secure_url;
+    }
 
     const result = await pool.query(
       `UPDATE rooms 
-       SET name = $1, capacity = $2, price = $3, description = $4, image_url = $5
-       WHERE id = $6
+       SET name=$1, capacity=$2, price=$3, description=$4, image_url=$5
+       WHERE id=$6
        RETURNING *`,
       [name, capacity, price, description, image_url, req.params.id]
     );
@@ -81,7 +92,7 @@ router.get("/all", async (req, res) => {
 // ---------- DELETE ----------
 router.delete("/delete/:id", async (req, res) => {
   try {
-    await pool.query(`DELETE FROM rooms WHERE id = $1`, [req.params.id]);
+    await pool.query(`DELETE FROM rooms WHERE id=$1`, [req.params.id]);
     res.json({ message: "Room deleted successfully" });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
