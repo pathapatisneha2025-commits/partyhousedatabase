@@ -4,12 +4,12 @@ const pool = require("../db");
 const nodemailer = require("nodemailer");  // ✅ ADD THIS
 require("dotenv").config();                // ✅ REQUIRED for .env
 
-const Brevo = require("brevo"); // Brevo SDK
-const brevoClient = new Brevo.TransactionalEmailsApi();
-brevoClient.setApiKey(
-  Brevo.TransactionalEmailsApiApiKeys.apiKey,
-  process.env.BREVO_API_KEY
-);
+const SibApiV3Sdk = require("sib-api-v3-sdk");
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+const apiKey = defaultClient.authentications["api-key"];
+apiKey.apiKey = process.env.BREVO_API_KEY;
+
+const tranEmailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
 // CREATE NEW BOOKING
 router.post("/add", async (req, res) => {
@@ -78,8 +78,8 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // --- Brevo email setup ---
-    const emailContent = {
+    // --- Send email via Brevo ---
+    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
       sender: { email: process.env.BREVO_EMAIL_FROM, name: "PartyHouse" },
       to: [{ email: booking.email, name: booking.name }],
       subject: `Your Booking is ${status}`,
@@ -88,9 +88,9 @@ router.put("/status/:id", async (req, res) => {
         <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
         <p>Thank you for choosing PartyHouse!</p>
       `,
-    };
+    });
 
-    await brevoClient.sendTransacEmail(emailContent);
+    await tranEmailApi.sendTransacEmail(sendSmtpEmail);
 
     res.json({ message: "Status updated & email sent via Brevo", booking });
   } catch (error) {
@@ -98,6 +98,7 @@ router.put("/status/:id", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 
