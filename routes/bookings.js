@@ -1,11 +1,20 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
-const nodemailer = require("nodemailer");  // ✅ ADD THIS
+const nodemailer = require("nodemailer");
+
 require("dotenv").config();                // ✅ REQUIRED for .env
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
 // CREATE NEW BOOKING
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS,
+  },
+});
 router.post("/add", async (req, res) => {
   try {
     const { name, email, phone, date, guests, message } = req.body;
@@ -56,7 +65,6 @@ router.get("/:id", async (req, res) => {
 });
 
 // ADMIN: UPDATE BOOKING STATUS ONLY
-
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -73,8 +81,9 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    const email = await resend.emails.send({
-      from: "PartyHouse <onboarding@resend.dev>",
+    // Gmail Send Email
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM,
       to: booking.email,
       subject: `Your Booking is ${status}`,
       html: `
@@ -83,11 +92,13 @@ router.put("/status/:id", async (req, res) => {
       `,
     });
 
-    console.log("Email sent:", email);
-    res.json({ message: "Status updated & email sent", booking });
+    res.json({
+      message: "Status updated & email sent via Gmail",
+      booking,
+    });
 
   } catch (error) {
-    console.error("Resend error:", error);
+    console.error("Email Error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
