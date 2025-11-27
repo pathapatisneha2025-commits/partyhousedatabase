@@ -1,13 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
-const nodemailer = require("nodemailer");
-
+const nodemailer = require("nodemailer");  // ✅ ADD THIS
 require("dotenv").config();                // ✅ REQUIRED for .env
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
 // CREATE NEW BOOKING
-
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -65,6 +63,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // ADMIN: UPDATE BOOKING STATUS ONLY
+
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -102,6 +101,7 @@ router.put("/status/:id", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 
