@@ -57,6 +57,7 @@ router.get("/:id", async (req, res) => {
 
 // ADMIN: UPDATE BOOKING STATUS ONLY
 
+// ADMIN: UPDATE BOOKING STATUS ONLY
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -73,24 +74,39 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    const email = await resend.emails.send({
-      from: "PartyHouse <onboarding@resend.dev>",
+    // --- Nodemailer setup with Gmail ---
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false, // use TLS
+      auth: {
+        user: process.env.SMTP_USER,  // your Gmail address
+        pass: process.env.SMTP_PASS,  // Gmail App Password
+      },
+    });
+
+    // Email content
+    const mailOptions = {
+      from: `"PartyHouse" <${process.env.SMTP_USER}>`,
       to: booking.email,
       subject: `Your Booking is ${status}`,
       html: `
         <h2>Hello ${booking.name},</h2>
         <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
+        <p>Thank you for choosing PartyHouse!</p>
       `,
-    });
+    };
 
-    console.log("Email sent:", email);
+    // Send email
+    await transporter.sendMail(mailOptions);
+
     res.json({ message: "Status updated & email sent", booking });
-
   } catch (error) {
-    console.error("Resend error:", error);
+    console.error("SMTP error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 
 
