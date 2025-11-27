@@ -5,6 +5,13 @@ const nodemailer = require("nodemailer");  // ✅ ADD THIS
 require("dotenv").config();                // ✅ REQUIRED for .env
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
+const Brevo = require("brevo"); // Brevo SDK
+const brevoClient = new Brevo.TransactionalEmailsApi();
+brevoClient.setApiKey(
+  Brevo.TransactionalEmailsApiApiKeys.apiKey,
+  process.env.BREVO_API_KEY
+);
+
 // CREATE NEW BOOKING
 router.post("/add", async (req, res) => {
   try {
@@ -56,8 +63,6 @@ router.get("/:id", async (req, res) => {
 });
 
 // ADMIN: UPDATE BOOKING STATUS ONLY
-
-// ADMIN: UPDATE BOOKING STATUS ONLY
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -74,39 +79,26 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // --- Nodemailer setup with Gmail ---
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 587,
-      secure: false, // use TLS
-      auth: {
-        user: process.env.SMTP_USER,  // your Gmail address
-        pass: process.env.SMTP_PASS,  // Gmail App Password
-      },
-    });
-
-    // Email content
-    const mailOptions = {
-      from: `"PartyHouse" <${process.env.SMTP_USER}>`,
-      to: booking.email,
+    // --- Brevo email setup ---
+    const emailContent = {
+      sender: { email: process.env.BREVO_EMAIL_FROM, name: "PartyHouse" },
+      to: [{ email: booking.email, name: booking.name }],
       subject: `Your Booking is ${status}`,
-      html: `
+      htmlContent: `
         <h2>Hello ${booking.name},</h2>
         <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
         <p>Thank you for choosing PartyHouse!</p>
       `,
     };
 
-    // Send email
-    await transporter.sendMail(mailOptions);
+    await brevoClient.sendTransacEmail(emailContent);
 
-    res.json({ message: "Status updated & email sent", booking });
+    res.json({ message: "Status updated & email sent via Brevo", booking });
   } catch (error) {
-    console.error("SMTP error:", error);
+    console.error("Brevo error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
-
 
 
 
