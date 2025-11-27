@@ -1,24 +1,25 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
-const nodemailer = require("nodemailer");  // ✅ ADD THIS
-require("dotenv").config();                // ✅ REQUIRED for .env
+const nodemailer = require("nodemailer");  
+require("dotenv").config();                
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
+
 // CREATE NEW BOOKING
 router.post("/add", async (req, res) => {
   try {
-    const { name, email, phone, date, guests, message } = req.body;
+    const { name, email, phone, date, guests, message, service } = req.body;
 
     if (!name || !email || !phone || !date) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     const result = await pool.query(
-      `INSERT INTO bookings (name, email, phone, event_date, guests, message)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO bookings (name, email, phone, event_date, guests, message, services)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [name, email, phone, date, guests, message]
+      [name, email, phone, date, guests, message, service]
     );
 
     res.json({ message: "Booking created", booking: result.rows[0] });
@@ -32,9 +33,7 @@ router.post("/add", async (req, res) => {
 // ADMIN: GET ALL BOOKINGS
 router.get("/all", async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT * FROM bookings`
-    );
+    const result = await pool.query(`SELECT * FROM bookings`);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -48,7 +47,6 @@ router.get("/:id", async (req, res) => {
       `SELECT * FROM bookings WHERE id = $1`,
       [req.params.id]
     );
-
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: "Server error" });
@@ -56,7 +54,6 @@ router.get("/:id", async (req, res) => {
 });
 
 // ADMIN: UPDATE BOOKING STATUS ONLY
-
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -73,16 +70,16 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // Load sender email from .env
     const emailFrom = process.env.EMAIL_FROM;
 
     const email = await resend.emails.send({
-      from: `PartyHouse <${emailFrom}>`,  // Using your verified sender
+      from: `PartyHouse <${emailFrom}>`,
       to: booking.email,
       subject: `Your Booking is ${status}`,
       html: `
         <h2>Hello ${booking.name},</h2>
         <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
+        <p>Service: <b>${booking.services || "Not specified"}</b></p>
       `,
     });
 
@@ -95,20 +92,17 @@ router.put("/status/:id", async (req, res) => {
   }
 });
 
-
-
-
 // ✅ ADMIN: UPDATE FULL BOOKING DETAILS
 router.put("/update/:id", async (req, res) => {
   try {
-    const { name, email, phone, date, guests, message } = req.body;
+    const { name, email, phone, date, guests, message, service } = req.body;
 
     const result = await pool.query(
       `UPDATE bookings 
-       SET name = $1, email = $2, phone = $3, event_date = $4, guests = $5, message = $6
-       WHERE id = $7
+       SET name = $1, email = $2, phone = $3, event_date = $4, guests = $5, message = $6, services = $7
+       WHERE id = $8
        RETURNING *`,
-      [name, email, phone, date, guests, message, req.params.id]
+      [name, email, phone, date, guests, message, service, req.params.id]
     );
 
     res.json({ message: "Booking updated", booking: result.rows[0] });
