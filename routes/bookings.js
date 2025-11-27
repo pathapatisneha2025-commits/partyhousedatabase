@@ -3,8 +3,7 @@ const router = express.Router();
 const pool = require("../db");
 const nodemailer = require("nodemailer");  // ✅ ADD THIS
 require("dotenv").config();                // ✅ REQUIRED for .env
-const { Resend } = require("resend");
-const resend = new Resend(process.env.RESEND_API_KEY);
+
 const Brevo = require("brevo"); // Brevo SDK
 const brevoClient = new Brevo.TransactionalEmailsApi();
 brevoClient.setApiKey(
