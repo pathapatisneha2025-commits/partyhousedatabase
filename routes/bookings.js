@@ -1,59 +1,70 @@
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
-const nodemailer = require("nodemailer");  
-require("dotenv").config();                
+const nodemailer = require("nodemailer");
+require("dotenv").config();
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// CREATE NEW BOOKING
+// ======================= CREATE NEW BOOKING =======================
 router.post("/add", async (req, res) => {
   try {
-    const { name, email, phone, date, guests, message, service } = req.body;
+    const { name, email, phone, date, guests, message, service, room } = req.body;
 
-    if (!name || !email || !phone || !date) {
+    if (!name || !email || !phone || !date || !room) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    // Check if the room is already booked for this date
+    const existingBooking = await pool.query(
+      "SELECT * FROM bookings WHERE roomId=$1 AND event_date=$2",
+      [room, date]
+    );
+    if (existingBooking.rows.length > 0) {
+      return res.status(400).json({ error: "This room is already booked for the selected date" });
+    }
+
     const result = await pool.query(
-      `INSERT INTO bookings (name, email, phone, event_date, guests, message, services)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO bookings (name, email, phone, event_date, guests, message, services, roomId)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [name, email, phone, date, guests, message, service]
+      [name, email, phone, date, guests, message, service, room]
     );
 
     res.json({ message: "Booking created", booking: result.rows[0] });
 
   } catch (err) {
-    console.log(err);
+    console.error("Booking add error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ADMIN: GET ALL BOOKINGS
+// ======================= GET ALL BOOKINGS =======================
 router.get("/all", async (req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM bookings`);
+    const result = await pool.query("SELECT * FROM bookings");
     res.json(result.rows);
   } catch (err) {
+    console.error("Get all bookings error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ADMIN: GET SINGLE BOOKING
+// ======================= GET SINGLE BOOKING =======================
 router.get("/:id", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT * FROM bookings WHERE id = $1`,
+      "SELECT * FROM bookings WHERE id=$1",
       [req.params.id]
     );
     res.json(result.rows[0]);
   } catch (err) {
+    console.error("Get booking error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ADMIN: UPDATE BOOKING STATUS ONLY
+// ======================= UPDATE BOOKING STATUS =======================
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -70,58 +81,66 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    const emailFrom = process.env.EMAIL_FROM;
-
-   const email = await resend.emails.send({
-  from: "PartyHouse <sandbox@resend.dev>",
-  to: booking.email,  // recipient
-  subject: `Your Booking is ${status}`,
-  html: `
-    <h2>Hello ${booking.name}</h2>
-    <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
-  `,
-});
-
+    // Send email via Resend
+    await resend.emails.send({
+      from: "PartyHouse <sandbox@resend.dev>",
+      to: booking.email,
+      subject: `Your Booking is ${status}`,
+      html: `
+        <h2>Hello ${booking.name}</h2>
+        <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
+      `,
+    });
 
     res.json({ message: "Status updated & email sent", booking });
 
-  } catch (error) {
-    console.error("Resend error:", error.response?.data || error.message);
+  } catch (err) {
+    console.error("Status update error:", err.response?.data || err.message);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ✅ ADMIN: UPDATE FULL BOOKING DETAILS
+// ======================= UPDATE FULL BOOKING =======================
 router.put("/update/:id", async (req, res) => {
   try {
-    const { name, email, phone, date, guests, message, service } = req.body;
+    const { name, email, phone, date, guests, message, service, room } = req.body;
+
+    if (!name || !email || !phone || !date || !room) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // Optional: Check if the room is already booked for this date (excluding current booking)
+    const existingBooking = await pool.query(
+      "SELECT * FROM bookings WHERE roomId=$1 AND event_date=$2 AND id <> $3",
+      [room, date, req.params.id]
+    );
+    if (existingBooking.rows.length > 0) {
+      return res.status(400).json({ error: "This room is already booked for the selected date" });
+    }
 
     const result = await pool.query(
-      `UPDATE bookings 
-       SET name = $1, email = $2, phone = $3, event_date = $4, guests = $5, message = $6, services = $7
-       WHERE id = $8
+      `UPDATE bookings
+       SET name=$1, email=$2, phone=$3, event_date=$4, guests=$5, message=$6, services=$7, roomId=$8
+       WHERE id=$9
        RETURNING *`,
-      [name, email, phone, date, guests, message, service, req.params.id]
+      [name, email, phone, date, guests, message, service, room, req.params.id]
     );
 
     res.json({ message: "Booking updated", booking: result.rows[0] });
 
   } catch (err) {
+    console.error("Update booking error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ✅ ADMIN: DELETE BOOKING
+// ======================= DELETE BOOKING =======================
 router.delete("/delete/:id", async (req, res) => {
   try {
-    await pool.query(
-      `DELETE FROM bookings WHERE id = $1`,
-      [req.params.id]
-    );
-
+    await pool.query("DELETE FROM bookings WHERE id=$1", [req.params.id]);
     res.json({ message: "Booking deleted successfully" });
-
   } catch (err) {
+    console.error("Delete booking error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
