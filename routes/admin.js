@@ -115,11 +115,13 @@ router.get("/check", (req, res) => {
 // =========================
 // LOGOUT
 // =========================
+
 router.post("/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.json({ message: "Logged out" });
-  });
+  // No session to destroy, just return success
+  res.json({ message: "Logged out successfully" });
 });
+
+
 
 
 module.exports = router;
