@@ -57,31 +57,37 @@ router.post("/login", async (req, res) => {
     const { email, password } = req.body;
 
     // Get admin by email
-    const admin = await pool.query(
-      `SELECT * FROM admins WHERE email = $1`,
+    const result = await pool.query(
+      "SELECT * FROM admins WHERE email = $1",
       [email]
     );
 
-    if (admin.rows.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    const valid = await bcrypt.compare(password, admin.rows[0].password);
+    // Compare password
+    const valid = await bcrypt.compare(password, result.rows[0].password);
 
     if (!valid) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Store session
-    req.session.adminId = admin.rows[0].id;
-
-    res.json({ message: "Login successful", loggedIn: true });
+    // Successful login
+    res.json({
+      message: "Login successful",
+      admin: {
+        id: result.rows[0].id,
+        name: result.rows[0].name,
+        email: result.rows[0].email,
+        phone: result.rows[0].phone
+      }
+    });
   } catch (err) {
-    console.log(err);
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
-
 // =========================
 // GET ALL ADMINS
 // =========================
