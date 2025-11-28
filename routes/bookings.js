@@ -11,33 +11,47 @@ router.post("/add", async (req, res) => {
   try {
     const { name, email, phone, date, guests, message, service, room } = req.body;
 
+    // Required fields check
     if (!name || !email || !phone || !date || !room) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     // Check if the room is already booked for this date
     const existingBooking = await pool.query(
-      "SELECT * FROM bookings WHERE roomId=$1 AND event_date=$2",
+      "SELECT * FROM bookings WHERE roomid=$1 AND event_date=$2",
       [room, date]
     );
+
     if (existingBooking.rows.length > 0) {
       return res.status(400).json({ error: "This room is already booked for the selected date" });
     }
 
+    // Insert booking
     const result = await pool.query(
-      `INSERT INTO bookings (name, email, phone, event_date, guests, message, services, roomId)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO bookings 
+        (name, email, phone, event_date, guests, message, services, roomid)
+       VALUES ($1, $2, $3, $4::DATE, $5, $6, $7, $8)
        RETURNING *`,
-      [name, email, phone, date, guests, message, service, room]
+      [
+        name,
+        email,
+        phone,
+        date,
+        guests || null,
+        message || null,
+        service || null,
+        room
+      ]
     );
 
     res.json({ message: "Booking created", booking: result.rows[0] });
 
   } catch (err) {
-    console.error("Booking add error:", err);
+    console.error("Booking add error:", err.message, err.stack);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 // ======================= GET ALL BOOKINGS =======================
 router.get("/all", async (req, res) => {
