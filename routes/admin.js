@@ -82,6 +82,18 @@ router.post("/login", async (req, res) => {
   }
 });
 
+// =========================
+// GET ALL ADMINS
+// =========================
+router.get("/all", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM admins ORDER BY id DESC");
+    res.json(result.rows);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
 // =========================
 // CHECK LOGIN
