@@ -54,11 +54,23 @@ router.post("/add", upload.single("image_url"), async (req, res) => {
 });
 
 // ---------- UPDATE ROOM ----------
-router.put("/update/:id", upload.single("image_file"), async (req, res) => {
+router.put("/update/:id", upload.single("image_url"), async (req, res) => {
   try {
     const { name, capacity, price, description } = req.body;
 
-    let image_url = req.body.image_url; // keep old image if not uploading
+    // get existing room first
+    const existing = await pool.query(
+      "SELECT * FROM rooms WHERE id=$1",
+      [req.params.id]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    let image_url = existing.rows[0].image_url; // default old image
+
+    // if new image uploaded
     if (req.file) {
       const result = await uploadToCloudinary(req.file.buffer);
       image_url = result.secure_url;
@@ -72,7 +84,11 @@ router.put("/update/:id", upload.single("image_file"), async (req, res) => {
       [name, capacity, price, description, image_url, req.params.id]
     );
 
-    res.json({ message: "Room updated", room: result.rows[0] });
+    res.json({
+      message: "Room updated successfully",
+      room: result.rows[0],
+    });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
