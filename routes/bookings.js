@@ -101,10 +101,15 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // ================= EMAIL USING NODEMAILER =================
+    // Debug logs (VERY IMPORTANT)
+    console.log("EMAIL USER:", process.env.EMAIL);
+    console.log("EMAIL PASS LENGTH:", process.env.EMAIL_PASSWORD?.length);
+
     try {
+      await transporter.verify(); //  checks connection first
+
       await transporter.sendMail({
-        from: `"PartyHouse" <${process.env.EMAIL}>`,
+        from: process.env.EMAIL,
         to: booking.email,
         subject: `Your Booking is ${status}`,
         html: `
@@ -117,14 +122,13 @@ router.put("/status/:id", async (req, res) => {
         `,
       });
 
-      console.log("Email sent successfully");
-
+      console.log("✅ Email sent successfully");
     } catch (emailErr) {
-      console.error("Email error:", emailErr);
+      console.error("❌ Email error FULL:", emailErr);
     }
 
-    res.json({
-      message: "Status updated & email sent",
+    return res.json({
+      message: "Status updated (email attempted)",
       booking,
     });
 
