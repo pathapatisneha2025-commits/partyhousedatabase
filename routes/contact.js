@@ -14,7 +14,7 @@ router.post("/send", async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO contact_messages (name, email, subject, message)
+      `INSERT INTO  contacts  (name, email, subject, message)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
       [name, email, subject, message]
@@ -36,7 +36,7 @@ router.post("/send", async (req, res) => {
 router.get("/all", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT * FROM contact_messages ORDER BY id DESC`
+      `SELECT * FROM  contacts  ORDER BY id DESC`
     );
 
     res.json(result.rows);
@@ -52,7 +52,7 @@ router.get("/all", async (req, res) => {
 router.delete("/delete/:id", async (req, res) => {
   try {
     await pool.query(
-      `DELETE FROM contact_messages WHERE id=$1`,
+      `DELETE FROM  contacts  WHERE id=$1`,
       [req.params.id]
     );
 
