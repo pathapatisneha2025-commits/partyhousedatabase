@@ -3,13 +3,15 @@ const router = express.Router();
 const pool = require("../db");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
-const { Resend } = require("resend");
-const resend = new Resend(process.env.RESEND_API_KEY);
+// const { Resend } = require("resend");
+// const resend = new Resend(process.env.RESEND_API_KEY);
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.EMAIL,
-    pass: process.env.EMAIL_PASSWORD, // Gmail App Password
+    pass: process.env.EMAIL_PASSWORD,
   },
 });
 // ======================= CREATE NEW BOOKING =======================
@@ -101,39 +103,34 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // Debug logs (VERY IMPORTANT)
-    console.log("EMAIL USER:", process.env.EMAIL);
-    console.log("EMAIL PASS LENGTH:", process.env.EMAIL_PASSWORD?.length);
+    console.log("📧 Sending email to:", booking.email);
 
-    try {
-      await transporter.verify(); //  checks connection first
+    // OPTIONAL: verify SMTP before sending
+    await transporter.verify();
 
-      await transporter.sendMail({
-        from: process.env.EMAIL,
-        to: booking.email,
-        subject: `Your Booking is ${status}`,
-        html: `
-          <div style="font-family:Arial;padding:15px">
-            <h2>Hello ${booking.name}</h2>
-            <p>Your booking for <b>${booking.event_date}</b> is now:</p>
-            <h3 style="color:green">${status}</h3>
-            <p>Thank you for choosing PartyHouse 🎉</p>
-          </div>
-        `,
-      });
+    const info = await transporter.sendMail({
+      from: `"PartyHouse" <${process.env.EMAIL}>`,
+      to: booking.email,
+      subject: `Your Booking is ${status}`,
+      html: `
+        <div style="font-family: Arial; padding: 15px;">
+          <h2>Hello ${booking.name}</h2>
+          <p>Your booking for <b>${booking.event_date}</b> is now:</p>
+          <h3 style="color: green;">${status}</h3>
+          <p>Thank you for choosing PartyHouse 🎉</p>
+        </div>
+      `,
+    });
 
-      console.log("✅ Email sent successfully");
-    } catch (emailErr) {
-      console.error("❌ Email error FULL:", emailErr);
-    }
+    console.log("✅ Email sent:", info.messageId);
 
-    return res.json({
-      message: "Status updated (email attempted)",
+    res.json({
+      message: "Status updated & email sent",
       booking,
     });
 
   } catch (err) {
-    console.error("Status update error:", err);
+    console.error("❌ Status update error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
