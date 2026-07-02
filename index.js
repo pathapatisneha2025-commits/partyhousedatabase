@@ -3,6 +3,8 @@ const cors = require("cors");
 const Bookings = require("./routes/bookings");
 const Rooms = require("./routes/rooms");
 const Admin = require("./routes/admin");
+const Contact= require("./routes/contact");
+
 
 const app = express();
 
@@ -12,6 +14,7 @@ app.use(express.json());
 app.use("/bookings", Bookings);
 app.use("/rooms", Rooms);
 app.use("/admin", Admin);
+app.use("/contact",Contact);
 
 // Test Route
 app.get("/", (req, res) => {
