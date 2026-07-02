@@ -3,21 +3,9 @@ const router = express.Router();
 const pool = require("../db");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
-// const { Resend } = require("resend");
-// const resend = new Resend(process.env.RESEND_API_KEY);
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-  connectionTimeout: 10000,
-});
+const { Resend } = require("resend");
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 // ======================= CREATE NEW BOOKING =======================
 router.post("/add", async (req, res) => {
   try {
@@ -107,34 +95,21 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    console.log("📧 Sending email to:", booking.email);
-
-    // OPTIONAL: verify SMTP before sending
-    await transporter.verify();
-
-    const info = await transporter.sendMail({
-      from: `"PartyHouse" <${process.env.EMAIL}>`,
+    // Send email via Resend
+    await resend.emails.send({
+      from: "PartyHouse <sandbox@resend.dev>",
       to: booking.email,
       subject: `Your Booking is ${status}`,
       html: `
-        <div style="font-family: Arial; padding: 15px;">
-          <h2>Hello ${booking.name}</h2>
-          <p>Your booking for <b>${booking.event_date}</b> is now:</p>
-          <h3 style="color: green;">${status}</h3>
-          <p>Thank you for choosing PartyHouse 🎉</p>
-        </div>
+        <h2>Hello ${booking.name}</h2>
+        <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
       `,
     });
 
-    console.log("✅ Email sent:", info.messageId);
-
-    res.json({
-      message: "Status updated & email sent",
-      booking,
-    });
+    res.json({ message: "Status updated & email sent", booking });
 
   } catch (err) {
-    console.error("❌ Status update error:", err);
+    console.error("Status update error:", err.response?.data || err.message);
     res.status(500).json({ error: "Server error" });
   }
 });
