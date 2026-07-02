@@ -5,7 +5,13 @@ const nodemailer = require("nodemailer");
 require("dotenv").config();
 const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
-
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL,
+    pass: process.env.EMAIL_PASSWORD, // Gmail App Password
+  },
+});
 // ======================= CREATE NEW BOOKING =======================
 router.post("/add", async (req, res) => {
   try {
@@ -95,21 +101,35 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // Send email via Resend
-    await resend.emails.send({
-      from: "PartyHouse <sandbox@resend.dev>",
-      to: booking.email,
-      subject: `Your Booking is ${status}`,
-      html: `
-        <h2>Hello ${booking.name}</h2>
-        <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
-      `,
+    // ================= EMAIL USING NODEMAILER =================
+    try {
+      await transporter.sendMail({
+        from: `"PartyHouse" <${process.env.EMAIL}>`,
+        to: booking.email,
+        subject: `Your Booking is ${status}`,
+        html: `
+          <div style="font-family:Arial;padding:15px">
+            <h2>Hello ${booking.name}</h2>
+            <p>Your booking for <b>${booking.event_date}</b> is now:</p>
+            <h3 style="color:green">${status}</h3>
+            <p>Thank you for choosing PartyHouse 🎉</p>
+          </div>
+        `,
+      });
+
+      console.log("Email sent successfully");
+
+    } catch (emailErr) {
+      console.error("Email error:", emailErr);
+    }
+
+    res.json({
+      message: "Status updated & email sent",
+      booking,
     });
 
-    res.json({ message: "Status updated & email sent", booking });
-
   } catch (err) {
-    console.error("Status update error:", err.response?.data || err.message);
+    console.error("Status update error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
