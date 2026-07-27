@@ -27,29 +27,64 @@ const uploadToCloudinary = (buffer, folder = "rooms") => {
 // ---------- ADD NEW ROOM ----------
 router.post("/add", upload.single("image_url"), async (req, res) => {
   try {
+
+    console.log("REQUEST RECEIVED");
+
+    console.log("BODY:", req.body);
+    console.log("FILE:", req.file);
+
     const { name, capacity, price, description } = req.body;
 
     if (!name || !capacity || !price) {
-      return res.status(400).json({ error: "Missing required fields" });
+      return res.status(400).json({
+        error: "Missing required fields"
+      });
     }
 
     let image_url = "";
+
     if (req.file) {
+
+      console.log("Uploading image to Cloudinary...");
+
       const result = await uploadToCloudinary(req.file.buffer);
+
+      console.log("Cloudinary response:", result.secure_url);
+
       image_url = result.secure_url;
     }
 
+    console.log("Saving to database...");
+
     const result = await pool.query(
-      `INSERT INTO rooms (name, capacity, price, description, image_url)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [name, capacity, price, description, image_url]
+      `INSERT INTO rooms 
+      (name, capacity, price, description, image_url)
+      VALUES ($1,$2,$3,$4,$5)
+      RETURNING *`,
+      [
+        name,
+        capacity,
+        price,
+        description,
+        image_url
+      ]
     );
 
-    res.json({ message: "Room added successfully", room: result.rows[0] });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
+    console.log("INSERT SUCCESS:", result.rows[0]);
+
+    res.json({
+      message: "Room added successfully",
+      room: result.rows[0]
+    });
+
+  } catch(err) {
+
+    console.error("ADD ROOM ERROR:", err);
+
+    res.status(500).json({
+      error: err.message
+    });
+
   }
 });
 
