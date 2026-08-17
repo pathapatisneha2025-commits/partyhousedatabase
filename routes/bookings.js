@@ -3,19 +3,34 @@ const router = express.Router();
 const pool = require("../db");
 require("dotenv").config();
 
-const sgMail = require("@sendgrid/mail");
+const nodemailer = require("nodemailer");
 
-// ======================= SENDGRID CONFIG =======================
+// ======================================================
+// GMAIL SMTP CONFIGURATION
+// ======================================================
 
-if (!process.env.SENDGRID_API_KEY) {
-  console.error("SENDGRID_API_KEY is missing");
-} else {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_APP_PASSWORD
+  }
+});
+
+// Optional startup check
+if (!process.env.EMAIL_USER) {
+  console.error("EMAIL_USER is missing");
 }
 
-const EMAIL_FROM = process.env.EMAIL_FROM;
+if (!process.env.EMAIL_APP_PASSWORD) {
+  console.error("EMAIL_APP_PASSWORD is missing");
+}
 
-// ======================= CREATE NEW BOOKING =======================
+
+// ======================================================
+// CREATE NEW BOOKING
+// ======================================================
 
 router.post("/add", async (req, res) => {
   try {
@@ -30,7 +45,6 @@ router.post("/add", async (req, res) => {
       room
     } = req.body;
 
-    // Required fields check
     if (!name || !email || !phone || !date || !room) {
       return res.status(400).json({
         error: "Missing required fields"
@@ -89,7 +103,9 @@ router.post("/add", async (req, res) => {
 });
 
 
-// ======================= GET ALL BOOKINGS =======================
+// ======================================================
+// GET ALL BOOKINGS
+// ======================================================
 
 router.get("/all", async (req, res) => {
   try {
@@ -109,7 +125,9 @@ router.get("/all", async (req, res) => {
 });
 
 
-// ======================= GET SINGLE BOOKING =======================
+// ======================================================
+// GET SINGLE BOOKING
+// ======================================================
 
 router.get("/:id", async (req, res) => {
   try {
@@ -136,7 +154,9 @@ router.get("/:id", async (req, res) => {
 });
 
 
-// ======================= UPDATE BOOKING STATUS =======================
+// ======================================================
+// UPDATE BOOKING STATUS + SEND EMAIL
+// ======================================================
 
 router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
@@ -150,7 +170,10 @@ router.put("/status/:id", async (req, res) => {
       });
     }
 
-    // Update database
+    // ------------------------------------------
+    // UPDATE DATABASE
+    // ------------------------------------------
+
     const result = await pool.query(
       `UPDATE bookings
        SET status=$1
@@ -167,33 +190,44 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
-    // ======================= SENDGRID EMAIL =======================
 
-    if (!process.env.SENDGRID_API_KEY) {
-      console.error("SENDGRID_API_KEY is missing");
+    // ------------------------------------------
+    // CHECK EMAIL CONFIGURATION
+    // ------------------------------------------
+
+    if (!process.env.EMAIL_USER) {
+
+      console.error("EMAIL_USER is missing");
 
       return res.status(500).json({
-        error: "SendGrid API key is not configured",
+        error: "EMAIL_USER is not configured",
         booking
       });
     }
 
-    if (!EMAIL_FROM) {
-      console.error("EMAIL_FROM is missing");
+    if (!process.env.EMAIL_APP_PASSWORD) {
+
+      console.error("EMAIL_APP_PASSWORD is missing");
 
       return res.status(500).json({
-        error: "EMAIL_FROM is not configured",
+        error: "EMAIL_APP_PASSWORD is not configured",
         booking
       });
     }
 
-    const msg = {
-      to: booking.email,
+
+    // ------------------------------------------
+    // SEND EMAIL
+    // ------------------------------------------
+
+    const mailOptions = {
 
       from: {
-        email: EMAIL_FROM,
-        name: "PartyHouse"
+        name: "PartyHouse",
+        address: process.env.EMAIL_USER
       },
+
+      to: booking.email,
 
       subject: `Your PartyHouse Booking is ${status}`,
 
@@ -203,7 +237,10 @@ Hello ${booking.name},
 Your PartyHouse booking has been updated.
 
 Booking Date: ${booking.event_date}
+
 Status: ${status}
+
+Phone: ${booking.phone}
 
 Thank you for choosing PartyHouse.
       `,
@@ -213,27 +250,33 @@ Thank you for choosing PartyHouse.
           font-family: Arial, sans-serif;
           max-width: 600px;
           margin: auto;
-          padding: 20px;
+          padding: 25px;
           border: 1px solid #ddd;
           border-radius: 10px;
+          background: #ffffff;
         ">
 
-          <h2 style="color:#f97316;">
+          <h2 style="
+            color: #f97316;
+            margin-bottom: 20px;
+          ">
             PartyHouse Booking Update
           </h2>
 
           <p>
-            Hello <strong>${booking.name}</strong>,
+            Hello
+            <strong>${booking.name}</strong>,
           </p>
 
           <p>
-            Your booking status has been updated.
+            Your PartyHouse booking status has been updated.
           </p>
 
           <div style="
-            background:#f8f8f8;
-            padding:15px;
-            border-radius:8px;
+            background: #f8f8f8;
+            padding: 18px;
+            border-radius: 8px;
+            margin: 20px 0;
           ">
 
             <p>
@@ -251,6 +294,11 @@ Thank you for choosing PartyHouse.
               ${booking.phone}
             </p>
 
+            <p>
+              <strong>Guests:</strong>
+              ${booking.guests || "Not specified"}
+            </p>
+
           </div>
 
           <p>
@@ -258,34 +306,75 @@ Thank you for choosing PartyHouse.
             <strong>PartyHouse</strong>.
           </p>
 
+          <p style="
+            color: #777;
+            font-size: 13px;
+          ">
+            This is an automated email. Please do not reply directly
+            to this message.
+          </p>
+
         </div>
       `
     };
 
+
     try {
 
-      await sgMail.send(msg);
+      const info = await transporter.sendMail(mailOptions);
 
       console.log(
-        `SendGrid email sent successfully to ${booking.email}`
+        "===================================="
       );
+
+      console.log(
+        "EMAIL SENT SUCCESSFULLY"
+      );
+
+      console.log(
+        "To:",
+        booking.email
+      );
+
+      console.log(
+        "Message ID:",
+        info.messageId
+      );
+
+      console.log(
+        "====================================");
+
 
     } catch (emailError) {
 
       console.error(
-        "SendGrid email error:",
-        emailError.response?.body || emailError.message
+        "===================================="
       );
 
-      // Database update succeeded even if email failed
+      console.error(
+        "GMAIL EMAIL ERROR"
+      );
+
+      console.error(
+        emailError.message
+      );
+
+      console.error(
+        "===================================="
+      );
+
+      // Booking status was already updated
       return res.status(200).json({
         message: "Booking status updated, but email could not be sent",
         booking,
-        emailError:
-          emailError.response?.body?.errors ||
-          emailError.message
+        emailError: emailError.message
       });
     }
+
+
+    // ------------------------------------------
+    // SUCCESS
+    // ------------------------------------------
 
     res.json({
       message: "Status updated & email sent",
@@ -307,9 +396,12 @@ Thank you for choosing PartyHouse.
 });
 
 
-// ======================= UPDATE FULL BOOKING =======================
+// ======================================================
+// UPDATE FULL BOOKING
+// ======================================================
 
 router.put("/update/:id", async (req, res) => {
+
   try {
 
     const {
@@ -336,7 +428,11 @@ router.put("/update/:id", async (req, res) => {
        WHERE roomid=$1
        AND event_date=$2
        AND id <> $3`,
-      [room, date, req.params.id]
+      [
+        room,
+        date,
+        req.params.id
+      ]
     );
 
     if (existingBooking.rows.length > 0) {
@@ -397,9 +493,12 @@ router.put("/update/:id", async (req, res) => {
 });
 
 
-// ======================= DELETE BOOKING =======================
+// ======================================================
+// DELETE BOOKING
+// ======================================================
 
 router.delete("/delete/:id", async (req, res) => {
+
   try {
 
     const result = await pool.query(
