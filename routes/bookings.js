@@ -4,8 +4,25 @@ const pool = require("../db");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
 const { Resend } = require("resend");
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resendKey = process.env.RESEND_API_KEY?.trim();
 
+console.log("====================================");
+console.log("RESEND ENVIRONMENT DEBUG");
+console.log("====================================");
+console.log("KEY EXISTS:", !!resendKey);
+console.log("KEY LENGTH:", resendKey ? resendKey.length : 0);
+console.log(
+  "KEY START:",
+  resendKey ? resendKey.substring(0, 8) : "NONE"
+);
+console.log(
+  "KEY END:",
+  resendKey ? resendKey.substring(resendKey.length - 5) : "NONE"
+);
+console.log("====================================");
+
+// Create Resend using the cleaned key
+const resend = new Resend(resendKey);
 // ======================= CREATE NEW BOOKING =======================
 router.post("/add", async (req, res) => {
   try {
