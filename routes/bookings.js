@@ -9,23 +9,175 @@ const nodemailer = require("nodemailer");
 // GMAIL SMTP CONFIGURATION
 // ======================================================
 
+const EMAIL_USER = process.env.EMAIL_USER;
+const EMAIL_APP_PASSWORD = process.env.EMAIL_APP_PASSWORD;
+
+console.log("====================================");
+console.log("EMAIL CONFIGURATION");
+console.log("EMAIL_USER:", EMAIL_USER || "MISSING");
+console.log(
+  "EMAIL_APP_PASSWORD EXISTS:",
+  !!EMAIL_APP_PASSWORD
+);
+console.log(
+  "EMAIL_APP_PASSWORD LENGTH:",
+  EMAIL_APP_PASSWORD ? EMAIL_APP_PASSWORD.length : 0
+);
+console.log("====================================");
+
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
 
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_APP_PASSWORD
-  }
+    user: EMAIL_USER,
+    pass: EMAIL_APP_PASSWORD
+  },
+
+  connectionTimeout: 30000,
+  greetingTimeout: 30000,
+  socketTimeout: 30000
 });
 
-// Optional startup check
-if (!process.env.EMAIL_USER) {
-  console.error("EMAIL_USER is missing");
+// ======================================================
+// VERIFY GMAIL SMTP CONNECTION
+// ======================================================
+
+if (EMAIL_USER && EMAIL_APP_PASSWORD) {
+
+  transporter.verify()
+    .then(() => {
+      console.log("====================================");
+      console.log("GMAIL SMTP CONNECTION SUCCESS");
+      console.log("Email:", EMAIL_USER);
+      console.log("====================================");
+    })
+    .catch((error) => {
+      console.error("====================================");
+      console.error("GMAIL SMTP CONNECTION FAILED");
+      console.error("CODE:", error.code);
+      console.error("COMMAND:", error.command);
+      console.error("MESSAGE:", error.message);
+      console.error("====================================");
+    });
+
+} else {
+
+  console.error("====================================");
+  console.error("GMAIL SMTP NOT CONFIGURED");
+  console.error(
+    "Add EMAIL_USER and EMAIL_APP_PASSWORD to Render Environment Variables"
+  );
+  console.error("====================================");
 }
 
-if (!process.env.EMAIL_APP_PASSWORD) {
-  console.error("EMAIL_APP_PASSWORD is missing");
-}
+
+// ======================================================
+// TEST EMAIL
+// ======================================================
+// IMPORTANT:
+// If this router is mounted as:
+// app.use("/bookings", bookingRoutes);
+//
+// URL will be:
+// GET /bookings/test-email
+// ======================================================
+
+router.get("/test-email", async (req, res) => {
+
+  try {
+
+    if (!EMAIL_USER) {
+      return res.status(500).json({
+        success: false,
+        error: "EMAIL_USER is missing in Render"
+      });
+    }
+
+    if (!EMAIL_APP_PASSWORD) {
+      return res.status(500).json({
+        success: false,
+        error: "EMAIL_APP_PASSWORD is missing in Render"
+      });
+    }
+
+    console.log("====================================");
+    console.log("TESTING GMAIL EMAIL");
+    console.log("TO:", EMAIL_USER);
+    console.log("====================================");
+
+    const info = await transporter.sendMail({
+
+      from: `"PartyHouse" <${EMAIL_USER}>`,
+
+      to: EMAIL_USER,
+
+      subject: "PartyHouse Test Email",
+
+      text: `
+This is a test email from PartyHouse.
+
+If you received this email,
+Gmail SMTP is working correctly from Render.
+      `,
+
+      html: `
+        <div style="
+          font-family: Arial, sans-serif;
+          max-width: 600px;
+          margin: auto;
+          padding: 25px;
+          border: 1px solid #ddd;
+          border-radius: 10px;
+        ">
+
+          <h2 style="color:#f97316;">
+            PartyHouse Email Test
+          </h2>
+
+          <p>
+            This is a test email from your PartyHouse backend.
+          </p>
+
+          <p>
+            If you received this email,
+            Gmail SMTP is working correctly from Render.
+          </p>
+
+        </div>
+      `
+    });
+
+    console.log("====================================");
+    console.log("TEST EMAIL SENT SUCCESSFULLY");
+    console.log("MESSAGE ID:", info.messageId);
+    console.log("====================================");
+
+    return res.json({
+      success: true,
+      message: "Test email sent successfully",
+      messageId: info.messageId
+    });
+
+  } catch (error) {
+
+    console.error("====================================");
+    console.error("TEST EMAIL FAILED");
+    console.error("CODE:", error.code);
+    console.error("COMMAND:", error.command);
+    console.error("RESPONSE:", error.response);
+    console.error("MESSAGE:", error.message);
+    console.error("====================================");
+
+    return res.status(500).json({
+      success: false,
+      code: error.code,
+      command: error.command,
+      message: error.message
+    });
+  }
+});
 
 
 // ======================================================
@@ -33,7 +185,9 @@ if (!process.env.EMAIL_APP_PASSWORD) {
 // ======================================================
 
 router.post("/add", async (req, res) => {
+
   try {
+
     const {
       name,
       email,
@@ -51,7 +205,7 @@ router.post("/add", async (req, res) => {
       });
     }
 
-    // Check if room is already booked for this date
+    // Check if room is already booked
     const existingBooking = await pool.query(
       `SELECT *
        FROM bookings
@@ -62,15 +216,26 @@ router.post("/add", async (req, res) => {
 
     if (existingBooking.rows.length > 0) {
       return res.status(400).json({
-        error: "This room is already booked for the selected date"
+        error:
+          "This room is already booked for the selected date"
       });
     }
 
     // Insert booking
     const result = await pool.query(
       `INSERT INTO bookings
-        (name, email, phone, event_date, guests, message, services, roomid)
-       VALUES ($1, $2, $3, $4::DATE, $5, $6, $7, $8)
+        (
+          name,
+          email,
+          phone,
+          event_date,
+          guests,
+          message,
+          services,
+          roomid
+        )
+       VALUES
+        ($1, $2, $3, $4::DATE, $5, $6, $7, $8)
        RETURNING *`,
       [
         name,
@@ -84,19 +249,20 @@ router.post("/add", async (req, res) => {
       ]
     );
 
-    res.json({
+    return res.json({
       message: "Booking created",
       booking: result.rows[0]
     });
 
   } catch (err) {
+
     console.error(
       "Booking add error:",
       err.message,
       err.stack
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Server error"
     });
   }
@@ -108,17 +274,23 @@ router.post("/add", async (req, res) => {
 // ======================================================
 
 router.get("/all", async (req, res) => {
+
   try {
+
     const result = await pool.query(
-      "SELECT * FROM bookings"
+      "SELECT * FROM bookings ORDER BY id DESC"
     );
 
-    res.json(result.rows);
+    return res.json(result.rows);
 
   } catch (err) {
-    console.error("Get all bookings error:", err);
 
-    res.status(500).json({
+    console.error(
+      "Get all bookings error:",
+      err.message
+    );
+
+    return res.status(500).json({
       error: "Server error"
     });
   }
@@ -130,7 +302,9 @@ router.get("/all", async (req, res) => {
 // ======================================================
 
 router.get("/:id", async (req, res) => {
+
   try {
+
     const result = await pool.query(
       "SELECT * FROM bookings WHERE id=$1",
       [req.params.id]
@@ -142,12 +316,16 @@ router.get("/:id", async (req, res) => {
       });
     }
 
-    res.json(result.rows[0]);
+    return res.json(result.rows[0]);
 
   } catch (err) {
-    console.error("Get booking error:", err);
 
-    res.status(500).json({
+    console.error(
+      "Get booking error:",
+      err.message
+    );
+
+    return res.status(500).json({
       error: "Server error"
     });
   }
@@ -159,6 +337,7 @@ router.get("/:id", async (req, res) => {
 // ======================================================
 
 router.put("/status/:id", async (req, res) => {
+
   const { id } = req.params;
   const { status } = req.body;
 
@@ -190,12 +369,20 @@ router.put("/status/:id", async (req, res) => {
 
     const booking = result.rows[0];
 
+    console.log("====================================");
+    console.log("BOOKING STATUS UPDATED");
+    console.log("Booking ID:", booking.id);
+    console.log("Customer:", booking.name);
+    console.log("Customer Email:", booking.email);
+    console.log("New Status:", status);
+    console.log("====================================");
+
 
     // ------------------------------------------
     // CHECK EMAIL CONFIGURATION
     // ------------------------------------------
 
-    if (!process.env.EMAIL_USER) {
+    if (!EMAIL_USER) {
 
       console.error("EMAIL_USER is missing");
 
@@ -205,7 +392,7 @@ router.put("/status/:id", async (req, res) => {
       });
     }
 
-    if (!process.env.EMAIL_APP_PASSWORD) {
+    if (!EMAIL_APP_PASSWORD) {
 
       console.error("EMAIL_APP_PASSWORD is missing");
 
@@ -217,15 +404,12 @@ router.put("/status/:id", async (req, res) => {
 
 
     // ------------------------------------------
-    // SEND EMAIL
+    // EMAIL
     // ------------------------------------------
 
     const mailOptions = {
 
-      from: {
-        name: "PartyHouse",
-        address: process.env.EMAIL_USER
-      },
+      from: `"PartyHouse" <${EMAIL_USER}>`,
 
       to: booking.email,
 
@@ -242,6 +426,8 @@ Status: ${status}
 
 Phone: ${booking.phone}
 
+Guests: ${booking.guests || "Not specified"}
+
 Thank you for choosing PartyHouse.
       `,
 
@@ -257,8 +443,8 @@ Thank you for choosing PartyHouse.
         ">
 
           <h2 style="
-            color: #f97316;
-            margin-bottom: 20px;
+            color:#f97316;
+            margin-bottom:20px;
           ">
             PartyHouse Booking Update
           </h2>
@@ -273,10 +459,10 @@ Thank you for choosing PartyHouse.
           </p>
 
           <div style="
-            background: #f8f8f8;
-            padding: 18px;
-            border-radius: 8px;
-            margin: 20px 0;
+            background:#f8f8f8;
+            padding:18px;
+            border-radius:8px;
+            margin:20px 0;
           ">
 
             <p>
@@ -307,11 +493,10 @@ Thank you for choosing PartyHouse.
           </p>
 
           <p style="
-            color: #777;
-            font-size: 13px;
+            color:#777;
+            font-size:13px;
           ">
-            This is an automated email. Please do not reply directly
-            to this message.
+            This is an automated email from PartyHouse.
           </p>
 
         </div>
@@ -319,67 +504,63 @@ Thank you for choosing PartyHouse.
     };
 
 
+    // ------------------------------------------
+    // SEND EMAIL
+    // ------------------------------------------
+
     try {
 
-      const info = await transporter.sendMail(mailOptions);
+      console.log("====================================");
+      console.log("SENDING EMAIL");
+      console.log("FROM:", EMAIL_USER);
+      console.log("TO:", booking.email);
+      console.log("STATUS:", status);
+      console.log("====================================");
 
-      console.log(
-        "===================================="
+      const info = await transporter.sendMail(
+        mailOptions
       );
 
-      console.log(
-        "EMAIL SENT SUCCESSFULLY"
-      );
+      console.log("====================================");
+      console.log("EMAIL SENT SUCCESSFULLY");
+      console.log("TO:", booking.email);
+      console.log("MESSAGE ID:", info.messageId);
+      console.log("RESPONSE:", info.response);
+      console.log("====================================");
 
-      console.log(
-        "To:",
-        booking.email
-      );
-
-      console.log(
-        "Message ID:",
-        info.messageId
-      );
-
-      console.log(
-        "====================================");
-
+      return res.json({
+        message: "Status updated & email sent",
+        booking,
+        emailSent: true,
+        messageId: info.messageId
+      });
 
     } catch (emailError) {
 
-      console.error(
-        "===================================="
-      );
+      console.error("====================================");
+      console.error("GMAIL EMAIL ERROR");
+      console.error("CODE:", emailError.code);
+      console.error("COMMAND:", emailError.command);
+      console.error("RESPONSE:", emailError.response);
+      console.error("MESSAGE:", emailError.message);
+      console.error("====================================");
 
-      console.error(
-        "GMAIL EMAIL ERROR"
-      );
-
-      console.error(
-        emailError.message
-      );
-
-      console.error(
-        "===================================="
-      );
-
-      // Booking status was already updated
+      // Database status was already updated
       return res.status(200).json({
-        message: "Booking status updated, but email could not be sent",
+        message:
+          "Booking status updated, but email could not be sent",
+
         booking,
-        emailError: emailError.message
+
+        emailSent: false,
+
+        emailError: {
+          code: emailError.code,
+          command: emailError.command,
+          message: emailError.message
+        }
       });
     }
-
-
-    // ------------------------------------------
-    // SUCCESS
-    // ------------------------------------------
-
-    res.json({
-      message: "Status updated & email sent",
-      booking
-    });
 
   } catch (err) {
 
@@ -389,7 +570,7 @@ Thank you for choosing PartyHouse.
       err.stack
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Server error"
     });
   }
@@ -421,7 +602,6 @@ router.put("/update/:id", async (req, res) => {
       });
     }
 
-    // Check duplicate room/date
     const existingBooking = await pool.query(
       `SELECT *
        FROM bookings
@@ -437,7 +617,8 @@ router.put("/update/:id", async (req, res) => {
 
     if (existingBooking.rows.length > 0) {
       return res.status(400).json({
-        error: "This room is already booked for the selected date"
+        error:
+          "This room is already booked for the selected date"
       });
     }
 
@@ -473,7 +654,7 @@ router.put("/update/:id", async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       message: "Booking updated",
       booking: result.rows[0]
     });
@@ -486,7 +667,7 @@ router.put("/update/:id", async (req, res) => {
       err.stack
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Server error"
     });
   }
@@ -512,7 +693,7 @@ router.delete("/delete/:id", async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       message: "Booking deleted successfully"
     });
 
@@ -524,7 +705,7 @@ router.delete("/delete/:id", async (req, res) => {
       err.stack
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Server error"
     });
   }
