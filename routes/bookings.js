@@ -84,33 +84,93 @@ router.put("/status/:id", async (req, res) => {
   const { status } = req.body;
 
   try {
+    // 1. Update booking status
     const result = await pool.query(
       "UPDATE bookings SET status=$1 WHERE id=$2 RETURNING *",
       [status, id]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Booking not found" });
+      return res.status(404).json({
+        error: "Booking not found",
+      });
     }
 
     const booking = result.rows[0];
 
-    // Send email via Resend
-    await resend.emails.send({
-      from: "party house <sandbox@resend.dev>",
-      to: booking.email,
+    console.log("====================================");
+    console.log("BOOKING STATUS UPDATE");
+    console.log("Booking ID:", id);
+    console.log("New Status:", status);
+    console.log("Customer Email:", booking.email);
+    console.log(
+      "RESEND KEY EXISTS:",
+      !!process.env.RESEND_API_KEY
+    );
+    console.log("====================================");
+
+    // 2. Send email through Resend
+    const { data, error } = await resend.emails.send({
+      from: "onboarding@resend.dev",
+      to: [booking.email],
       subject: `Your Booking is ${status}`,
       html: `
-        <h2>Hello ${booking.name}</h2>
-        <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
+        <div style="font-family: Arial, sans-serif;">
+          <h2>Hello ${booking.name},</h2>
+
+          <p>
+            Your booking for
+            <strong>${booking.event_date}</strong>
+            is now
+            <strong>${status}</strong>.
+          </p>
+
+          <p>
+            Thank you for choosing Party House.
+          </p>
+        </div>
       `,
     });
 
-    res.json({ message: "Status updated & email sent", booking });
+    // 3. Check Resend response
+    if (error) {
+      console.error("====================================");
+      console.error("RESEND EMAIL ERROR");
+      console.error(error);
+      console.error("====================================");
+
+      return res.status(500).json({
+        error: "Booking status updated, but email failed",
+        resendError: error,
+        booking,
+      });
+    }
+
+    console.log("====================================");
+    console.log("EMAIL SENT TO RESEND");
+    console.log("Resend Response:", data);
+    console.log("====================================");
+
+    // 4. Success
+    res.json({
+      message: "Status updated & email sent",
+      booking,
+      email: {
+        sent: true,
+        resendId: data?.id,
+      },
+    });
 
   } catch (err) {
-    console.error("Status update error:", err.response?.data || err.message);
-    res.status(500).json({ error: "Server error" });
+    console.error("====================================");
+    console.error("STATUS UPDATE ERROR");
+    console.error(err);
+    console.error("====================================");
+
+    res.status(500).json({
+      error: "Server error",
+      details: err.message,
+    });
   }
 });
 
