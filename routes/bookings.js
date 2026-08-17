@@ -112,7 +112,7 @@ router.put("/status/:id", async (req, res) => {
     // 2. Send email through Resend
     const { data, error } = await resend.emails.send({
       from: "onboarding@resend.dev",
-      to: [booking.email],
+      to: "prasad.nhz.jp@gmail.com",
       subject: `Your Booking is ${status}`,
       html: `
         <div style="font-family: Arial, sans-serif;">
