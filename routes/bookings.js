@@ -97,7 +97,7 @@ router.put("/status/:id", async (req, res) => {
 
     // Send email via Resend
     await resend.emails.send({
-      from: "PartyHouse <sandbox@resend.dev>",
+      from: "party house <sandbox@resend.dev>",
       to: booking.email,
       subject: `Your Booking is ${status}`,
       html: `
