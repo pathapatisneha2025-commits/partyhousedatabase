@@ -4,25 +4,8 @@ const pool = require("../db");
 const nodemailer = require("nodemailer");
 require("dotenv").config();
 const { Resend } = require("resend");
-const resendKey = process.env.RESEND_API_KEY?.trim();
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-console.log("====================================");
-console.log("RESEND ENVIRONMENT DEBUG");
-console.log("====================================");
-console.log("KEY EXISTS:", !!resendKey);
-console.log("KEY LENGTH:", resendKey ? resendKey.length : 0);
-console.log(
-  "KEY START:",
-  resendKey ? resendKey.substring(0, 8) : "NONE"
-);
-console.log(
-  "KEY END:",
-  resendKey ? resendKey.substring(resendKey.length - 5) : "NONE"
-);
-console.log("====================================");
-
-// Create Resend using the cleaned key
-const resend = new Resend(resendKey);
 // ======================= CREATE NEW BOOKING =======================
 router.post("/add", async (req, res) => {
   try {
@@ -100,113 +83,34 @@ router.put("/status/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  console.log("====================================");
-  console.log("BOOKING STATUS UPDATE");
-  console.log("Booking ID:", id);
-  console.log("New Status:", status);
-  console.log("====================================");
-
   try {
-    // Check Resend API key
-    console.log(
-      "RESEND API KEY:",
-      process.env.RESEND_API_KEY ? "FOUND" : "NOT FOUND"
-    );
-
-    // Update booking
     const result = await pool.query(
       "UPDATE bookings SET status=$1 WHERE id=$2 RETURNING *",
       [status, id]
     );
 
-    console.log("Database update result:", result.rows);
-
     if (result.rows.length === 0) {
-      console.log("❌ Booking not found");
-
-      return res.status(404).json({
-        error: "Booking not found",
-      });
+      return res.status(404).json({ error: "Booking not found" });
     }
 
     const booking = result.rows[0];
 
-    // ================================
-    // CONSOLE BOOKING EMAIL
-    // ================================
-    console.log("Customer Name:", booking.name);
-    console.log("Customer Email:", booking.email);
-    console.log("Booking Date:", booking.event_date);
-    console.log("Booking Status:", booking.status);
-
-    // Check email
-    if (!booking.email) {
-      console.log("❌ EMAIL IS EMPTY");
-
-      return res.status(400).json({
-        error: "Customer email is missing",
-      });
-    }
-
-    // ================================
-    // SEND EMAIL
-    // ================================
-    console.log("📧 Sending email to:", booking.email);
-
-    const { data, error } = await resend.emails.send({
-      from: "PartyHouse <onboarding@resend.dev>",
-      to: [booking.email],
+    // Send email via Resend
+    await resend.emails.send({
+      from: "PartyHouse <sandbox@resend.dev>",
+      to: booking.email,
       subject: `Your Booking is ${status}`,
       html: `
         <h2>Hello ${booking.name}</h2>
-
-        <p>
-          Your booking for
-          <b>${booking.event_date}</b>
-          is now
-          <b>${status}</b>.
-        </p>
+        <p>Your booking for <b>${booking.event_date}</b> is now <b>${status}</b>.</p>
       `,
     });
 
-    // ================================
-    // RESEND RESPONSE
-    // ================================
-    console.log("📧 RESEND DATA:", data);
-    console.log("❌ RESEND ERROR:", error);
-
-    if (error) {
-      console.error("❌ EMAIL FAILED");
-      console.error(error);
-
-      return res.status(500).json({
-        error: "Email sending failed",
-        resendError: error,
-      });
-    }
-
-    console.log("✅ EMAIL SENT SUCCESSFULLY");
-    console.log("Resend Email ID:", data?.id);
-
-    console.log("====================================");
-
-    return res.json({
-      message: "Status updated & email sent",
-      booking,
-      email: {
-        sentTo: booking.email,
-        resendId: data?.id,
-      },
-    });
+    res.json({ message: "Status updated & email sent", booking });
 
   } catch (err) {
-    console.error("❌ STATUS UPDATE ERROR:");
-    console.error(err);
-
-    return res.status(500).json({
-      error: "Server error",
-      details: err.message,
-    });
+    console.error("Status update error:", err.response?.data || err.message);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
