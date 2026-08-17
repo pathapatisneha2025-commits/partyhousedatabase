@@ -10,7 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@getbrevo/brevo": "^3.0.1",
+    "@getbrevo/brevo": "^3.0.4",
     "@sendgrid/mail": "^8.1.6",
     "bcrypt": "^6.0.0",
     "brevo": "^1.0.0",
