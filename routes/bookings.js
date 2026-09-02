@@ -3,7 +3,46 @@ const router = express.Router();
 const pool = require("../db");
 
 require("dotenv").config();
+const nodemailer = require("nodemailer");
 
+const EMAIL_USER = process.env.EMAIL_USER;
+const EMAIL_APP_PASSWORD = process.env.EMAIL_APP_PASSWORD;
+
+const transporter = nodemailer.createTransport({
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
+  auth: {
+    user: EMAIL_USER,
+    pass: EMAIL_APP_PASSWORD,
+  },
+});
+
+async function sendEmail({
+  to,
+  toName,
+  subject,
+  htmlContent,
+  textContent,
+}) {
+  if (!EMAIL_USER) {
+    throw new Error("EMAIL_USER is missing");
+  }
+
+  if (!EMAIL_APP_PASSWORD) {
+    throw new Error("EMAIL_APP_PASSWORD is missing");
+  }
+
+  const info = await transporter.sendMail({
+    from: `"PartyHouse" <${EMAIL_USER}>`,
+    to: toName ? `"${toName}" <${to}>` : to,
+    subject,
+    text: textContent,
+    html: htmlContent,
+  });
+
+  return info;
+}
 // ======================================================
 // BREVO HTTP API CONFIGURATION
 // ======================================================
@@ -469,19 +508,14 @@ router.get("/:id", async (req, res) => {
 
 
 // ======================================================
-// UPDATE BOOKING STATUS + SEND EMAIL
+// UPDATE BOOKING STATUS
+// SEND EMAIL ONLY WHEN BOOKING IS CONFIRMED
 // ======================================================
 
 router.put("/status/:id", async (req, res) => {
 
-  const {
-    id
-  } = req.params;
-
-  const {
-    status
-  } = req.body;
-
+  const { id } = req.params;
+  const { status } = req.body;
 
   try {
 
@@ -490,13 +524,31 @@ router.put("/status/:id", async (req, res) => {
     // ------------------------------------------
 
     if (!status) {
-
       return res.status(400).json({
-        error:
-          "Status is required"
+        error: "Status is required"
       });
     }
 
+    // ------------------------------------------
+    // GET CURRENT BOOKING FIRST
+    // ------------------------------------------
+
+    const currentResult = await pool.query(
+      `SELECT *
+       FROM bookings
+       WHERE id=$1`,
+      [id]
+    );
+
+    if (currentResult.rows.length === 0) {
+      return res.status(404).json({
+        error: "Booking not found"
+      });
+    }
+
+    const currentBooking = currentResult.rows[0];
+
+    const oldStatus = currentBooking.status;
 
     // ------------------------------------------
     // UPDATE DATABASE
@@ -513,99 +565,169 @@ router.put("/status/:id", async (req, res) => {
       ]
     );
 
-
-    if (result.rows.length === 0) {
-
-      return res.status(404).json({
-        error:
-          "Booking not found"
-      });
-    }
-
-
-    const booking =
-      result.rows[0];
-
+    const booking = result.rows[0];
 
     console.log("====================================");
-    console.log(
-      "BOOKING STATUS UPDATED"
-    );
-    console.log(
-      "Booking ID:",
-      booking.id
-    );
-    console.log(
-      "Customer:",
-      booking.name
-    );
-    console.log(
-      "Customer Email:",
-      booking.email
-    );
-    console.log(
-      "New Status:",
-      status
-    );
+    console.log("BOOKING STATUS UPDATED");
+    console.log("Booking ID:", booking.id);
+    console.log("Customer:", booking.name);
+    console.log("Customer Email:", booking.email);
+    console.log("Old Status:", oldStatus);
+    console.log("New Status:", status);
     console.log("====================================");
 
 
+    // ==================================================
+    // EMAIL ONLY WHEN STATUS BECOMES CONFIRMED
+    // ==================================================
+
+    const isConfirmed =
+      String(status).toLowerCase() === "confirmed";
+
+    const wasAlreadyConfirmed =
+      String(oldStatus || "").toLowerCase() === "confirmed";
+
+
     // ------------------------------------------
-    // CHECK BREVO CONFIG
+    // NO EMAIL FOR OTHER STATUS
     // ------------------------------------------
 
-    if (!BREVO_API_KEY) {
+    if (!isConfirmed) {
 
-      console.error(
-        "BREVO_API_KEY is missing"
-      );
+      return res.json({
 
-      return res.status(500).json({
-
-        error:
-          "BREVO_API_KEY is not configured",
+        message: "Booking status updated",
 
         booking,
 
-        emailSent:
-          false
-      });
-    }
+        emailSent: false
 
-
-    if (!BREVO_FROM_EMAIL) {
-
-      console.error(
-        "BREVO_FROM_EMAIL is missing"
-      );
-
-      return res.status(500).json({
-
-        error:
-          "BREVO_FROM_EMAIL is not configured",
-
-        booking,
-
-        emailSent:
-          false
       });
     }
 
 
     // ------------------------------------------
+    // PREVENT DUPLICATE CONFIRMATION EMAIL
+    // ------------------------------------------
+
+    if (wasAlreadyConfirmed) {
+
+      console.log("====================================");
+      console.log(
+        "BOOKING WAS ALREADY CONFIRMED"
+      );
+      console.log(
+        "NO DUPLICATE EMAIL SENT"
+      );
+      console.log("====================================");
+
+      return res.json({
+
+        message:
+          "Booking was already confirmed",
+
+        booking,
+
+        emailSent: false
+
+      });
+    }
+
+
+    // ==================================================
+    // CHECK EMAIL CONFIGURATION
+    // ==================================================
+
+    if (!EMAIL_USER) {
+
+      console.error(
+        "EMAIL_USER is missing"
+      );
+
+      return res.status(200).json({
+
+        message:
+          "Booking confirmed, but email configuration is missing",
+
+        booking,
+
+        emailSent: false,
+
+        emailError:
+          "EMAIL_USER is not configured"
+
+      });
+    }
+
+
+    if (!EMAIL_APP_PASSWORD) {
+
+      console.error(
+        "EMAIL_APP_PASSWORD is missing"
+      );
+
+      return res.status(200).json({
+
+        message:
+          "Booking confirmed, but email configuration is missing",
+
+        booking,
+
+        emailSent: false,
+
+        emailError:
+          "EMAIL_APP_PASSWORD is not configured"
+
+      });
+    }
+
+
+    // ==================================================
+    // CHECK CUSTOMER EMAIL
+    // ==================================================
+
+    if (!booking.email) {
+
+      console.error(
+        "Customer email is missing"
+      );
+
+      return res.status(200).json({
+
+        message:
+          "Booking confirmed, but customer email is missing",
+
+        booking,
+
+        emailSent: false,
+
+        emailError:
+          "Customer email is missing"
+
+      });
+    }
+
+
+    // ==================================================
     // EMAIL TEXT
-    // ------------------------------------------
+    // ==================================================
 
     const textContent = `
+
 Hello ${booking.name},
 
-Your PartyHouse booking has been updated.
+Great news!
+
+Your PartyHouse booking has been CONFIRMED.
+
+Booking Details
+----------------------------
+
+Booking ID:
+${booking.id}
 
 Booking Date:
 ${booking.event_date}
-
-Status:
-${status}
 
 Phone:
 ${booking.phone}
@@ -613,161 +735,247 @@ ${booking.phone}
 Guests:
 ${booking.guests || "Not specified"}
 
+Status:
+CONFIRMED
+
 Thank you for choosing PartyHouse.
 
+We look forward to welcoming you!
+
 This is an automated email from PartyHouse.
+
     `;
 
 
-    // ------------------------------------------
+    // ==================================================
     // EMAIL HTML
-    // ------------------------------------------
+    // ==================================================
 
     const htmlContent = `
 
-      <div style="
-        font-family: Arial, sans-serif;
-        max-width: 600px;
-        margin: auto;
-        padding: 25px;
-        border: 1px solid #ddd;
-        border-radius: 10px;
-        background: #ffffff;
+<div style="
+  font-family: Arial, sans-serif;
+  max-width: 600px;
+  margin: 20px auto;
+  padding: 30px;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  background: #ffffff;
+">
+
+  <div style="
+    text-align: center;
+    margin-bottom: 25px;
+  ">
+
+    <h1 style="
+      color: #f97316;
+      margin: 0;
+      font-size: 28px;
+    ">
+      PartyHouse
+    </h1>
+
+  </div>
+
+
+  <h2 style="
+    color: #16a34a;
+    text-align: center;
+    margin-bottom: 25px;
+  ">
+    Booking Confirmed 🎉
+  </h2>
+
+
+  <p style="
+    font-size: 16px;
+    color: #333;
+  ">
+
+    Hello
+    <strong>
+      ${booking.name}
+    </strong>,
+
+  </p>
+
+
+  <p style="
+    font-size: 15px;
+    color: #555;
+    line-height: 1.6;
+  ">
+
+    Great news! Your
+    <strong>
+      PartyHouse
+    </strong>
+    booking has been confirmed.
+
+  </p>
+
+
+  <div style="
+    background: #f8f8f8;
+    padding: 20px;
+    border-radius: 10px;
+    margin: 25px 0;
+  ">
+
+    <h3 style="
+      margin-top: 0;
+      color: #333;
+    ">
+      Booking Details
+    </h3>
+
+
+    <p>
+      <strong>
+        Booking ID:
+      </strong>
+
+      ${booking.id}
+    </p>
+
+
+    <p>
+      <strong>
+        Booking Date:
+      </strong>
+
+      ${booking.event_date}
+    </p>
+
+
+    <p>
+      <strong>
+        Phone:
+      </strong>
+
+      ${booking.phone}
+    </p>
+
+
+    <p>
+      <strong>
+        Guests:
+      </strong>
+
+      ${booking.guests || "Not specified"}
+    </p>
+
+
+    <p>
+      <strong>
+        Status:
+      </strong>
+
+      <span style="
+        color: #16a34a;
+        font-weight: bold;
       ">
+        CONFIRMED
+      </span>
+    </p>
 
-        <h2 style="
-          color:#f97316;
-          margin-bottom:20px;
-        ">
-          PartyHouse Booking Update
-        </h2>
+  </div>
 
 
-        <p>
-          Hello
-          <strong>
-            ${booking.name}
-          </strong>,
-        </p>
+  <p style="
+    font-size: 15px;
+    color: #555;
+    line-height: 1.6;
+  ">
+
+    Thank you for choosing
+    <strong>
+      PartyHouse
+    </strong>.
+
+  </p>
 
 
-        <p>
-          Your PartyHouse booking
-          status has been updated.
-        </p>
+  <p style="
+    font-size: 15px;
+    color: #555;
+  ">
+
+    We look forward to welcoming you!
+
+  </p>
 
 
-        <div style="
-          background:#f8f8f8;
-          padding:18px;
-          border-radius:8px;
-          margin:20px 0;
-        ">
-
-          <p>
-            <strong>
-              Booking Date:
-            </strong>
-
-            ${booking.event_date}
-          </p>
+  <hr style="
+    border: 0;
+    border-top: 1px solid #eee;
+    margin: 25px 0;
+  ">
 
 
-          <p>
-            <strong>
-              Status:
-            </strong>
+  <p style="
+    color: #999;
+    font-size: 12px;
+    text-align: center;
+  ">
 
-            ${status}
-          </p>
+    This is an automated email from PartyHouse.
+    Please do not reply to this email.
 
+  </p>
 
-          <p>
-            <strong>
-              Phone:
-            </strong>
+</div>
 
-            ${booking.phone}
-          </p>
-
-
-          <p>
-            <strong>
-              Guests:
-            </strong>
-
-            ${booking.guests || "Not specified"}
-          </p>
-
-        </div>
-
-
-        <p>
-          Thank you for choosing
-          <strong>
-            PartyHouse
-          </strong>.
-        </p>
-
-
-        <p style="
-          color:#777;
-          font-size:13px;
-        ">
-          This is an automated email
-          from PartyHouse.
-        </p>
-
-      </div>
     `;
 
 
-    // ------------------------------------------
-    // SEND EMAIL
-    // ------------------------------------------
+    // ==================================================
+    // SEND CONFIRMATION EMAIL
+    // ==================================================
 
     try {
 
       console.log("====================================");
       console.log(
-        "SENDING EMAIL THROUGH BREVO"
+        "SENDING BOOKING CONFIRMATION EMAIL"
       );
       console.log(
         "FROM:",
-        BREVO_FROM_EMAIL
+        EMAIL_USER
       );
       console.log(
         "TO:",
         booking.email
       );
       console.log(
-        "STATUS:",
-        status
+        "BOOKING ID:",
+        booking.id
       );
       console.log("====================================");
 
 
-      const emailResult =
-        await sendBrevoEmail({
+      const emailResult = await sendEmail({
 
-          to:
-            booking.email,
+        to:
+          booking.email,
 
-          toName:
-            booking.name,
+        toName:
+          booking.name,
 
-          subject:
-            `Your PartyHouse Booking is ${status}`,
+        subject:
+          "🎉 Your PartyHouse Booking is Confirmed",
 
-          textContent,
+        textContent,
 
-          htmlContent
-        });
+        htmlContent
+
+      });
 
 
       console.log("====================================");
       console.log(
-        "EMAIL SENT SUCCESSFULLY"
+        "BOOKING CONFIRMATION EMAIL SENT"
       );
       console.log(
         "TO:",
@@ -783,7 +991,7 @@ This is an automated email from PartyHouse.
       return res.json({
 
         message:
-          "Status updated & email sent",
+          "Booking confirmed & confirmation email sent",
 
         booking,
 
@@ -792,6 +1000,7 @@ This is an automated email from PartyHouse.
 
         messageId:
           emailResult.messageId
+
       });
 
 
@@ -799,22 +1008,23 @@ This is an automated email from PartyHouse.
 
       console.error("====================================");
       console.error(
-        "BREVO EMAIL ERROR"
+        "BOOKING CONFIRMATION EMAIL FAILED"
       );
       console.error(
-        "MESSAGE:",
+        "ERROR:",
         emailError.message
       );
       console.error("====================================");
 
 
       // IMPORTANT:
-      // Database status was already updated.
+      // Booking is already confirmed in database.
+      // We don't change it back if email fails.
 
       return res.status(200).json({
 
         message:
-          "Booking status updated, but email could not be sent",
+          "Booking confirmed, but confirmation email could not be sent",
 
         booking,
 
@@ -823,23 +1033,38 @@ This is an automated email from PartyHouse.
 
         emailError:
           emailError.message
+
       });
+
     }
 
 
   } catch (err) {
 
+    console.error("====================================");
     console.error(
-      "Status update error:",
-      err.message,
+      "STATUS UPDATE ERROR"
+    );
+    console.error(
+      "MESSAGE:",
+      err.message
+    );
+    console.error(
+      "STACK:",
       err.stack
     );
+    console.error("====================================");
+
 
     return res.status(500).json({
+
       error:
         "Server error"
+
     });
+
   }
+
 });
 
 
